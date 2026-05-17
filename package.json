@@ -1,0 +1,51 @@
+{
+  "name": "@yellowkode/suno-mcp-core",
+  "version": "1.0.0",
+  "description": "Shared core handlers and tool schemas for Suno MCP servers — by YellowKode Academy",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "mcp",
+    "suno",
+    "ai",
+    "music",
+    "claude",
+    "model-context-protocol",
+    "yellowkode"
+  ],
+  "author": "YellowKode Academy <ola@yellowkode.com.br>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yellowkode/suno-mcp-core"
+  },
+  "homepage": "https://sunoboard.com",
+  "bugs": {
+    "url": "https://github.com/yellowkode/suno-mcp-core/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.9"
+  }
+}
