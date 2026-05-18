@@ -24,6 +24,13 @@ export interface HandlerConfig {
   baseUrl: string;
   maxPollAttempts?: number;
   pollIntervalMs?: number;
+  /**
+   * Which API is being called.
+   * - 'sunoboard': api.sunoboard.com — credits at /api/v1/credits, returns { remaining, total, used }
+   * - 'sunoapi':   api.sunoapi.org   — credits at /api/v1/generate/credit, returns a plain number
+   * Defaults to auto-detect: baseUrl containing "sunoboard" → 'sunoboard', otherwise 'sunoapi'.
+   */
+  apiType?: 'sunoboard' | 'sunoapi';
 }
 
 export type ToolName =

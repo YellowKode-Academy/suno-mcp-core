@@ -32,6 +32,12 @@ async function httpRequest(
 export function createHandlers(config: HandlerConfig) {
   const { apiKey, baseUrl, maxPollAttempts = 30, pollIntervalMs = 10000 } = config;
 
+  // Detect which API variant we're talking to.
+  // sunoapi.org uses a different credits endpoint and returns credits as a plain number.
+  const isSunoBoard =
+    config.apiType === 'sunoboard' ||
+    (config.apiType !== 'sunoapi' && baseUrl.includes('sunoboard'));
+
   const req = (path: string, options?: RequestInit) =>
     httpRequest(baseUrl, apiKey, path, options);
 
@@ -62,8 +68,10 @@ export function createHandlers(config: HandlerConfig) {
       body: JSON.stringify(body),
     });
 
+    // sunoapi.org: { code, msg, data: { taskId } }          — no status in generate response
+    // SunoBoard:   { data: { taskId, status: 'PENDING' } }
     const taskId = (result.data?.taskId ?? result.taskId) as string;
-    const status = (result.data?.status ?? result.status) as string;
+    const status = (result.data?.status ?? result.status) as string | undefined;
     return {
       taskId,
       status,
@@ -75,12 +83,16 @@ export function createHandlers(config: HandlerConfig) {
     const result = await req(
       `/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`,
     );
+    // Both APIs return { data: { taskId, status, response? } }
     const data = result.data ?? result;
+    const status = (data.status as string | undefined)?.toUpperCase();
 
-    if (data.status?.toUpperCase() === 'SUCCESS') {
+    // SUCCESS     — both tracks fully generated
+    // FIRST_SUCCESS — first track is ready (1 of 2); return available tracks
+    if (status === 'SUCCESS' || status === 'FIRST_SUCCESS') {
       const tracks: SunoTrack[] = data.response?.sunoData ?? [];
       return {
-        status: 'SUCCESS' as const,
+        status,
         taskId,
         tracks: tracks.map((t) => ({
           audioUrl: t.audioUrl,
@@ -106,6 +118,8 @@ export function createHandlers(config: HandlerConfig) {
     for (let i = 1; i <= maxPollAttempts; i++) {
       const result = await getMusicStatus(taskId);
 
+      // Only resolve on full SUCCESS — FIRST_SUCCESS means 1 of 2 tracks is ready,
+      // keep polling so the caller always receives both tracks.
       if (result.status === 'SUCCESS') return result;
 
       if (TERMINAL_ERRORS.includes((result.status ?? '').toUpperCase())) {
@@ -142,8 +156,18 @@ export function createHandlers(config: HandlerConfig) {
   }
 
   async function getCredits() {
-    const result = await req('/api/v1/credits');
+    // sunoapi.org: GET /api/v1/generate/credit → data is a plain number (remaining only)
+    // SunoBoard:   GET /api/v1/credits         → data is { remaining, total, used }
+    const path = isSunoBoard ? '/api/v1/credits' : '/api/v1/generate/credit';
+    const result = await req(path);
     const data = result.data ?? result;
+
+    if (typeof data === 'number') {
+      return {
+        remaining: data,
+        message: `Remaining credits: ${data}`,
+      };
+    }
 
     return {
       remaining: data.remaining as number,
