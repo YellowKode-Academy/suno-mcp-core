@@ -72,6 +72,17 @@ export function createHandlers(config: HandlerConfig) {
     // SunoBoard:   { data: { taskId, status: 'PENDING' } }
     const taskId = (result.data?.taskId ?? result.taskId) as string;
     const status = (result.data?.status ?? result.status) as string | undefined;
+
+    if (!taskId) {
+      // Expose raw API response so we can diagnose unexpected formats
+      return {
+        taskId: undefined,
+        status,
+        _debug: result,
+        message: `taskId not found in response. Raw: ${JSON.stringify(result).slice(0, 400)}`,
+      };
+    }
+
     return {
       taskId,
       status,
