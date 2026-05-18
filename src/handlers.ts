@@ -62,10 +62,12 @@ export function createHandlers(config: HandlerConfig) {
       body: JSON.stringify(body),
     });
 
+    const taskId = (result.data?.taskId ?? result.taskId) as string;
+    const status = (result.data?.status ?? result.status) as string;
     return {
-      taskId: result.data?.taskId as string,
-      status: result.data?.status as string,
-      message: `Generation started. TaskId: ${result.data?.taskId}. Use wait_for_music to get the audio URL.`,
+      taskId,
+      status,
+      message: `Generation started. TaskId: ${taskId}. Use wait_for_music to get the audio URL.`,
     };
   }
 
@@ -73,7 +75,7 @@ export function createHandlers(config: HandlerConfig) {
     const result = await req(
       `/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`,
     );
-    const data = result.data;
+    const data = result.data ?? result;
 
     if (data.status?.toUpperCase() === 'SUCCESS') {
       const tracks: SunoTrack[] = data.response?.sunoData ?? [];

@@ -1,6 +1,6 @@
 {
   "name": "@yellowkode/suno-mcp-core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Shared core handlers and tool schemas for Suno MCP servers — by YellowKode Academy",
   "type": "module",
   "main": "dist/index.js",
