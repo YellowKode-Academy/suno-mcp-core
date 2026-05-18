@@ -30,7 +30,7 @@ async function httpRequest(
 }
 
 export function createHandlers(config: HandlerConfig) {
-  const { apiKey, baseUrl, maxPollAttempts = 30, pollIntervalMs = 10000 } = config;
+  const { apiKey, baseUrl, maxPollAttempts = 30, pollIntervalMs = 10000, callBackUrl } = config;
 
   // Detect which API variant we're talking to.
   // sunoapi.org uses a different credits endpoint and returns credits as a plain number.
@@ -62,6 +62,10 @@ export function createHandlers(config: HandlerConfig) {
     if (params.negativeTags) body.negativeTags = params.negativeTags;
     // vocalGender is only relevant when there's a vocal track
     if (params.vocalGender && !body.instrumental) body.vocalGender = params.vocalGender;
+    // sunoapi.org requires callBackUrl — we poll for status anyway so any URL works
+    if (!isSunoBoard) {
+      body.callBackUrl = callBackUrl ?? 'https://api.sunoboard.com/health';
+    }
 
     const result = await req('/api/v1/generate', {
       method: 'POST',
@@ -74,13 +78,7 @@ export function createHandlers(config: HandlerConfig) {
     const status = (result.data?.status ?? result.status) as string | undefined;
 
     if (!taskId) {
-      // Expose raw API response so we can diagnose unexpected formats
-      return {
-        taskId: undefined,
-        status,
-        _debug: result,
-        message: `taskId not found in response. Raw: ${JSON.stringify(result).slice(0, 400)}`,
-      };
+      throw new Error(`Generate failed: ${result?.msg ?? JSON.stringify(result).slice(0, 200)}`);
     }
 
     return {

@@ -31,6 +31,11 @@ export interface HandlerConfig {
    * Defaults to auto-detect: baseUrl containing "sunoboard" → 'sunoboard', otherwise 'sunoapi'.
    */
   apiType?: 'sunoboard' | 'sunoapi';
+  /**
+   * sunoapi.org requires a callBackUrl in every generate request.
+   * We poll for status anyway, so any reachable URL works — defaults to a no-op endpoint.
+   */
+  callBackUrl?: string;
 }
 
 export type ToolName =
