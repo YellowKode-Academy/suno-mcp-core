@@ -1,4 +1,4 @@
-export { createHandlers } from './handlers.js';
+export { createHandlers, normalizeVocalGender, SunoTransientError } from './handlers.js';
 export type { Handlers } from './handlers.js';
 export { toolSchemas } from './tools.js';
 export { MODEL_SPECS, MODEL_ORDER } from './models.js';

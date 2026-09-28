@@ -8,29 +8,67 @@ const TERMINAL_ERRORS = [
   'ERROR',
 ];
 
+/**
+ * Transient API error — safe to retry. sunoapi.org answers HTTP 200 with the real code in the
+ * body: 430 = call frequency too high (rate limit), 455 = maintenance, 5xx = server error.
+ */
+export class SunoTransientError extends Error {
+  constructor(public readonly code: number, message: string) {
+    super(message);
+    this.name = 'SunoTransientError';
+  }
+}
+
+const TRANSIENT_CODES = new Set([430, 455, 500, 502, 503, 504]);
+const TRANSIENT_HTTP = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+/** Maps 'male'/'female' (and variants) to the only values sunoapi.org accepts: 'm' | 'f'. */
+export function normalizeVocalGender(v?: string): 'm' | 'f' | undefined {
+  if (!v) return undefined;
+  const x = v.trim().toLowerCase();
+  if (x === 'm' || x === 'male') return 'm';
+  if (x === 'f' || x === 'female') return 'f';
+  return undefined;
+}
+
 async function httpRequest(
   baseUrl: string,
   apiKey: string,
   path: string,
   options: RequestInit = {},
 ): Promise<any> {
-  const res = await fetch(`${baseUrl}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string>),
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}${path}`, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        ...(options.headers as Record<string, string>),
+      },
+    });
+  } catch (e) {
+    throw new SunoTransientError(0, `Network error: ${(e as Error).message}`);
+  }
   if (!res.ok) {
     const text = await res.text();
+    if (TRANSIENT_HTTP.has(res.status)) throw new SunoTransientError(res.status, `API error ${res.status}: ${text}`);
     throw new Error(`API error ${res.status}: ${text}`);
   }
-  return res.json();
+  const body = await res.json();
+  // sunoapi.org: HTTP 200 + { code, msg, data } — any code other than 200 is an error.
+  if (body && typeof body.code === 'number' && body.code !== 200) {
+    const msg = `Suno API error ${body.code}: ${body.msg ?? 'unknown error'}`;
+    if (TRANSIENT_CODES.has(body.code)) throw new SunoTransientError(body.code, msg);
+    throw new Error(msg);
+  }
+  return body;
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export function createHandlers(config: HandlerConfig) {
-  const { apiKey, baseUrl, maxPollAttempts = 30, pollIntervalMs = 10000, callBackUrl } = config;
+  const { apiKey, baseUrl, maxPollAttempts = 30, pollIntervalMs = 10000, callBackUrl, retryDelayMs = 1500 } = config;
 
   // Detect which API variant we're talking to.
   // sunoapi.org uses a different credits endpoint and returns credits as a plain number.
@@ -61,16 +99,32 @@ export function createHandlers(config: HandlerConfig) {
     }
     if (params.negativeTags) body.negativeTags = params.negativeTags;
     // vocalGender is only relevant when there's a vocal track
-    if (params.vocalGender && !body.instrumental) body.vocalGender = params.vocalGender;
+    // sunoapi.org only understands 'm' | 'f' — 'male'/'female' used to be silently ignored.
+    const vocalGender = normalizeVocalGender(params.vocalGender);
+    if (vocalGender && !body.instrumental) body.vocalGender = vocalGender;
     // sunoapi.org requires callBackUrl — we poll for status anyway so any URL works
     if (!isSunoBoard) {
       body.callBackUrl = callBackUrl ?? 'https://api.sunoboard.com/health';
     }
 
-    const result = await req('/api/v1/generate', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    // Retry transient errors (rate limit 430, maintenance 455, 5xx) with backoff.
+    let result: any;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        result = await req('/api/v1/generate', { method: 'POST', body: JSON.stringify(body) });
+        break;
+      } catch (err) {
+        if (!(err instanceof SunoTransientError)) throw err;
+        if (attempt >= 3) {
+          throw new Error(
+            err.code === 430
+              ? 'Suno API is rate limiting requests right now (code 430). Wait a minute and try again.'
+              : `Suno API is temporarily unavailable (${err.message}). Try again in a few minutes.`,
+          );
+        }
+        await sleep(retryDelayMs * attempt);
+      }
+    }
 
     // sunoapi.org: { code, msg, data: { taskId } }          — no status in generate response
     // SunoBoard:   { data: { taskId, status: 'PENDING' } }
@@ -125,7 +179,15 @@ export function createHandlers(config: HandlerConfig) {
 
   async function waitForMusic(taskId: string) {
     for (let i = 1; i <= maxPollAttempts; i++) {
-      const result = await getMusicStatus(taskId);
+      let result: Awaited<ReturnType<typeof getMusicStatus>>;
+      try {
+        result = await getMusicStatus(taskId);
+      } catch (err) {
+        // Rate limit / maintenance while polling is not a failure — just try again next round.
+        if (!(err instanceof SunoTransientError)) throw err;
+        if (i < maxPollAttempts) await sleep(pollIntervalMs);
+        continue;
+      }
 
       // Only resolve on full SUCCESS — FIRST_SUCCESS means 1 of 2 tracks is ready,
       // keep polling so the caller always receives both tracks.
@@ -136,7 +198,7 @@ export function createHandlers(config: HandlerConfig) {
       }
 
       if (i < maxPollAttempts) {
-        await new Promise<void>((resolve) => setTimeout(resolve, pollIntervalMs));
+        await sleep(pollIntervalMs);
       }
     }
 

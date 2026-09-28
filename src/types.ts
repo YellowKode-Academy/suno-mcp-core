@@ -9,7 +9,8 @@ export interface GenerateMusicParams {
   styleWeight?: number;
   weirdnessConstraint?: number;
   audioWeight?: number;
-  vocalGender?: 'male' | 'female';
+  /** 'male' | 'female' (tool schema) — sent to the API as 'm' | 'f', the only values sunoapi.org accepts. */
+  vocalGender?: 'male' | 'female' | 'm' | 'f';
 }
 
 export interface SunoTrack {
@@ -36,6 +37,11 @@ export interface HandlerConfig {
    * We poll for status anyway, so any reachable URL works — defaults to a no-op endpoint.
    */
   callBackUrl?: string;
+  /**
+   * Base delay for retrying transient API errors on generate (rate limit 430, maintenance 455,
+   * 5xx). Retries use backoff: delay, 2×delay. Default 1500ms.
+   */
+  retryDelayMs?: number;
 }
 
 export type ToolName =

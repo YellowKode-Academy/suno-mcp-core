@@ -80,7 +80,18 @@ describe('createHandlers', () => {
       await generateMusic({ prompt: 'pop song', instrumental: false, vocalGender: 'female' });
 
       const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
-      expect(body.vocalGender).toBe('female');
+      // sunoapi.org only accepts 'm' | 'f' — 'female' was silently ignored before 1.0.8
+      expect(body.vocalGender).toBe('f');
+    });
+
+    it('maps male → m', async () => {
+      fetchMock = mockFetch({ data: { taskId: 'x', status: 'PENDING' } });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { generateMusic } = createHandlers({ apiKey: KEY, baseUrl: SUNOAPI_BASE });
+      await generateMusic({ prompt: 'rock song', vocalGender: 'male' });
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).vocalGender).toBe('m');
     });
 
     it('does NOT send vocalGender when instrumental=true', async () => {
